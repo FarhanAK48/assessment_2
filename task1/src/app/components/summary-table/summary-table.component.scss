@@ -1,0 +1,50 @@
+:host { display: block; }
+.table-wrap { overflow-x: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; }
+.summary-table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+th, td { padding: 0.75rem 1rem; border-bottom: 1px solid #f1f5f9; text-align: left; white-space: nowrap; }
+thead th { background: #f8fafc; font-weight: 600; color: #334155; }
+tbody tr:last-child > * { border-bottom: 0; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Phones: each row becomes a card */
+@media (max-width: 600px) {
+  .table-wrap { border: 0; background: transparent; }
+  thead { display: none; }
+  .summary-table, tbody, tr, th, td { display: block; width: 100%; }
+  tbody tr { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 0.75rem; padding: 0.25rem 0; }
+  tbody th { border: 0; padding-bottom: 0.25rem; }
+  td { display: flex; justify-content: space-between; border: 0; padding: 0.35rem 1rem; }
+  td::before { content: attr(data-label); color: #64748b; font-weight: 500; }
+}
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.status-favorable {
+  color: #16a34a;
+}
+
+.status-unfavorable {
+  color: #dc2626;
+}
+
+.status-neutral {
+  color: #6b7280;
+}
+
+.status-text {
+  font-size: 12px;
+}
