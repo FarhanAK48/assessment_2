@@ -1,0 +1,30 @@
+<div class="cc-filter">
+  <label class="cc-search">
+    <span class="sr-only">Search cost centers</span>
+    <input type="search" placeholder="Search cost centers…" [value]="query" (input)="onSearch($event)" />
+  </label>
+
+  <ul class="cc-list" role="group" aria-label="Cost centers">
+    <li class="cc-all">
+      <label>
+        <input type="checkbox" data-center="__all__" [checked]="allSelected" (change)="onSelectAll($event)" />
+        <span>All cost centers</span>
+      </label>
+    </li>
+
+    <li *ngFor="let opt of visible; trackBy: trackByLabel">
+      <label>
+        <input
+          type="checkbox"
+          [attr.data-center]="opt.label"
+          [checked]="isChecked(opt.label)"
+          (change)="toggle(opt.label)"
+        />
+        <span>{{ opt.label }}</span>
+        <small class="cc-note" *ngIf="opt.memberOf">part of {{ opt.memberOf }}</small>
+      </label>
+    </li>
+
+    <li class="cc-empty" *ngIf="visible.length === 0">No cost centers match "{{ query }}".</li>
+  </ul>
+</div>

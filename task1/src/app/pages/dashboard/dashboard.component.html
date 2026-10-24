@@ -1,4 +1,4 @@
-<section class="dashboard" *ngIf="month$ | async as month">
+<!-- <section class="dashboard" *ngIf="month$ | async as month">
   <header class="toolbar">
     <div>
       <h1>Month-to-Date Performance</h1>
@@ -42,4 +42,61 @@
       [caption]="'Performance summary for ' + monthLabel(month)"
     ></app-summary-table>
   </ng-container>
+</section> -->
+
+
+<section class="dashboard" *ngIf="view$ | async as view">
+  <header class="toolbar">
+    <div>
+      <h1>Month-to-Date Performance</h1>
+      <p class="range">
+        <strong>{{ monthLabel(view.month) }}</strong>
+        <ng-container *ngIf="view.state.status === 'success' && view.state.range as r">
+          · {{ r.from | date: 'dd MMM yyyy' }} – {{ r.to | date: 'dd MMM yyyy' }}
+        </ng-container>
+      </p>
+    </div>
+
+    <label class="month-select">
+      <span>Month</span>
+      <select (change)="onMonthChange($any($event.target).value)">
+        <option *ngFor="let m of months" [value]="m.value" [selected]="m.value === view.month">{{ m.label }}</option>
+        <option *ngIf="!hasMonth(view.month)" [value]="view.month" selected>{{ view.month }}</option>
+      </select>
+    </label>
+  </header>
+
+  <app-cost-center
+    *ngIf="view.state.costCenters?.length"
+    [options]="view.state.costCenters ?? []"
+    [selected]="view.selected"
+    (selectionChange)="onSelectionChange($event)"
+  ></app-cost-center>
+
+  <p class="scope" *ngIf="view.state.status === 'success'">
+    Showing:
+    <ng-container *ngIf="view.state.includedCenters?.length; else allCenters">
+      {{ view.state.includedCenters?.join(' · ') }}
+    </ng-container>
+    <ng-template #allCenters>All cost centers</ng-template>
+  </p>
+
+  <div class="state state-loading" *ngIf="view.state.status === 'loading'" role="status" aria-live="polite">
+    <span class="spinner" aria-hidden="true"></span> Loading performance data…
+  </div>
+
+  <div class="state state-error" *ngIf="view.state.status === 'error'" role="alert">
+    <p>{{ view.state.message }}</p>
+    <button type="button" (click)="retry()">Retry</button>
+  </div>
+
+  <div class="state state-empty" *ngIf="view.state.status === 'empty'">
+    <p>{{ view.state.message ?? 'No performance data is available for this month.' }}</p>
+  </div>
+
+  <app-summary-table
+    *ngIf="view.state.status === 'success'"
+    [rows]="view.state.rows"
+    [caption]="'Performance summary for ' + monthLabel(view.month)"
+  ></app-summary-table>
 </section>
