@@ -1,5 +1,3 @@
-
-
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -7,11 +5,12 @@ import { ActivatedRoute, Router } from '@angular/router';
 import {
   BehaviorSubject, catchError, combineLatest, distinctUntilChanged, map, Observable, of, startWith, switchMap,
 } from 'rxjs';
+import { CostCenterComponent } from '../../components/cost-center/cost-center.component';
+import { EngagementFilterComponent } from '../../components/engagement-filter/engagement-filter.component';
 import { AVAILABLE_MONTHS, DEFAULT_MONTH } from '../../core/config/months';
-import { DashboardState, PerformanceResponse } from '../../core/models/performance.model';
+import { DashboardState, EngagementType, PerformanceResponse } from '../../core/models/performance.model';
 import { PerformanceApiService } from '../../core/services/performance.service';
 import { toViewModel } from '../../core/utils/report.mapper';
-import { CostCenterComponent } from '../../components/cost-center/cost-center.component';
 import { SummaryTableComponent } from '../../components/summary-table/summary-table.component';
 
 type ResponseState =
@@ -30,7 +29,7 @@ const ERROR: DashboardState = {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, SummaryTableComponent, CostCenterComponent],
+  imports: [CommonModule, SummaryTableComponent, CostCenterComponent, EngagementFilterComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -42,6 +41,8 @@ export class DashboardComponent {
   private readonly retry$ = new BehaviorSubject<void>(undefined);
   /** selected cost center labels. Empty = All. */
   private readonly selection$ = new BehaviorSubject<string[]>([]);
+  /** selected engagement types. Empty = combined tables. */
+  private readonly engagement$ = new BehaviorSubject<EngagementType[]>([]);
 
   readonly months = AVAILABLE_MONTHS;
 
@@ -50,6 +51,7 @@ export class DashboardComponent {
     distinctUntilChanged()
   );
 
+  /** The ONLY stream that calls the API: once per month or Retry. Filters never reach it. */
   private readonly response$: Observable<ResponseState> = combineLatest([this.month$, this.retry$]).pipe(
     switchMap(([month]) =>
       this.api.getMonth(month).pipe(
@@ -60,28 +62,31 @@ export class DashboardComponent {
     )
   );
 
-  /** Everything the template needs, subscribed once. */
-  readonly view$ = combineLatest([this.month$, this.response$, this.selection$]).pipe(
-    map(([month, response, selected]) => ({
+  readonly view$ = combineLatest([this.month$, this.response$, this.selection$, this.engagement$]).pipe(
+    map(([month, response, selected, engagements]) => ({
       month,
       selected,
-      state: this.toState(response, selected),
+      engagements,
+      state: this.toState(response, selected, engagements),
     }))
   );
 
   constructor() {
-    // A new month has different cost centers: go back to All
     this.month$.pipe(takeUntilDestroyed()).subscribe(() => this.selection$.next([]));
   }
 
-  private toState(response: ResponseState, selected: string[]): DashboardState {
+  private toState(
+    response: ResponseState,
+    selected: string[],
+    engagements: EngagementType[]
+  ): DashboardState {
     switch (response.status) {
       case 'loading':
         return LOADING;
       case 'error':
         return ERROR;
       default:
-        return toViewModel(response.res, selected); // pure recompute, no HTTP
+        return toViewModel(response.res, selected, engagements);
     }
   }
 
@@ -99,6 +104,10 @@ export class DashboardComponent {
 
   onSelectionChange(labels: string[]): void {
     this.selection$.next(labels);
+  }
+
+  onEngagementChange(types: EngagementType[]): void {
+    this.engagement$.next(types);
   }
 
   retry(): void {

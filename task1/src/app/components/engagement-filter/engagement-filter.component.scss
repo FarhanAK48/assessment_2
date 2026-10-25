@@ -1,0 +1,33 @@
+:host {
+    display: block;
+    margin-bottom: 1rem;
+}
+
+.eng-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+}
+
+legend {
+    padding: 0 0.25rem;
+    font-size: 0.85rem;
+    color: #475569;
+}
+
+label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
+}
+
+.eng-hint {
+    color: #64748b;
+}

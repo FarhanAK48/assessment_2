@@ -1,50 +1,3 @@
-<!-- <section class="dashboard" *ngIf="month$ | async as month">
-  <header class="toolbar">
-    <div>
-      <h1>Month-to-Date Performance</h1>
-      <ng-container *ngIf="vm$ | async as vm">
-        <p class="range" *ngIf="vm.status === 'success'">
-          <strong>{{ monthLabel(month) }}</strong>
-          <ng-container *ngIf="vm.range as r">
-            · {{ r.from | date: 'dd MMM yyyy' }} – {{ r.to | date: 'dd MMM yyyy' }}
-          </ng-container>
-        </p>
-        <p class="range" *ngIf="vm.status !== 'success'">{{ monthLabel(month) }}</p>
-      </ng-container>
-    </div>
-
-    <label class="month-select">
-      <span>Month</span>
-      <select (change)="onMonthChange($any($event.target).value)">
-        <option *ngFor="let m of months" [value]="m.value" [selected]="m.value === month">{{ m.label }}</option>
-        <option *ngIf="!hasMonth(month)" [value]="month" selected>{{ month }}</option>
-      </select>
-    </label>
-  </header>
-
-  <ng-container *ngIf="vm$ | async as vm">
-    <div class="state state-loading" *ngIf="vm.status === 'loading'" role="status" aria-live="polite">
-      <span class="spinner" aria-hidden="true"></span> Loading performance data…
-    </div>
-
-    <div class="state state-error" *ngIf="vm.status === 'error'" role="alert">
-      <p>{{ vm.message }}</p>
-      <button type="button" (click)="retry()">Retry</button>
-    </div>
-
-    <div class="state state-empty" *ngIf="vm.status === 'empty'">
-      <p>No performance data is available for this month.</p>
-    </div>
-
-    <app-summary-table
-      *ngIf="vm.status === 'success'"
-      [rows]="vm.rows"
-      [caption]="'Performance summary for ' + monthLabel(month)"
-    ></app-summary-table>
-  </ng-container>
-</section> -->
-
-
 <section class="dashboard" *ngIf="view$ | async as view">
   <header class="toolbar">
     <div>
@@ -73,12 +26,23 @@
     (selectionChange)="onSelectionChange($event)"
   ></app-cost-center>
 
+  <app-engagement-filter
+    *ngIf="view.state.status === 'success' || view.state.status === 'empty'"
+    [selected]="view.engagements"
+    (selectionChange)="onEngagementChange($event)"
+  ></app-engagement-filter>
+
   <p class="scope" *ngIf="view.state.status === 'success'">
     Showing:
     <ng-container *ngIf="view.state.includedCenters?.length; else allCenters">
       {{ view.state.includedCenters?.join(' · ') }}
     </ng-container>
     <ng-template #allCenters>All cost centers</ng-template>
+    ·
+    <ng-container *ngIf="view.engagements.length; else combined">
+      {{ view.engagements.join(' + ') }}
+    </ng-container>
+    <ng-template #combined>All engagement types (combined)</ng-template>
   </p>
 
   <div class="state state-loading" *ngIf="view.state.status === 'loading'" role="status" aria-live="polite">

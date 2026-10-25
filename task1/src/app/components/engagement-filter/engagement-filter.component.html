@@ -1,0 +1,15 @@
+<fieldset class="eng-filter">
+  <legend>Engagement type</legend>
+
+  <label *ngFor="let type of types">
+    <input
+      type="checkbox"
+      [attr.data-engagement]="type"
+      [checked]="isChecked(type)"
+      (change)="toggle(type)"
+    />
+    <span>{{ type }}</span>
+  </label>
+
+  <small class="eng-hint" *ngIf="selected.length === 0">None selected: combined data</small>
+</fieldset>

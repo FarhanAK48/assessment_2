@@ -1,4 +1,9 @@
-import { CostCenterDetail, CostCenterOption } from '../models/performance.model';
+import {
+  CostCenterDetail,
+  CostCenterOption,
+  ENGAGEMENT_TYPES,
+  EngagementType,
+} from '../models/performance.model';
 
 export interface Pair {
   target: number;
@@ -7,9 +12,7 @@ export interface Pair {
 
 export interface CostCenterIndex {
   options: CostCenterOption[];
-  /** each response row exactly once, keyed by rowKey */
   rows: Map<string, CostCenterDetail>;
-  /** normalized label -> row keys that label resolves to */
   labelToRowKeys: Map<string, string[]>;
 }
 
@@ -39,7 +42,6 @@ export function buildCostCenterIndex(
   const memberKeys = new Map<string, string[]>();
   const optionByLabel = new Map<string, CostCenterOption>();
 
-  // Pass 1: every response row, once, under its own cost_center label
   (details ?? []).forEach((detail, i) => {
     if (!detail || typeof detail !== 'object') return;
     const key = rowKeyOf(detail, i);
@@ -92,19 +94,65 @@ export function resolveSelectedRows(
   return [...index.rows.entries()].filter(([key]) => keys.has(key)).map(([, row]) => row);
 }
 
-/** Sums target/actual of one metric across rows. Percentages are never summed. */
-export function aggregateTotals(rows: readonly CostCenterDetail[], source: string): Pair {
+
+/** Keeps only valid types, de-duplicated, always in Own / Rented / Hired order. */
+export function normalizeEngagements(
+  selected: readonly string[] | null | undefined
+): EngagementType[] {
+  const wanted = new Set<string>(selected ?? []);
+  return ENGAGEMENT_TYPES.filter((type) => wanted.has(type));
+}
+
+/** Independent toggle: any combination of the three is allowed. Empty = combined. */
+export function toggleEngagement(
+  selected: readonly string[],
+  type: EngagementType
+): EngagementType[] {
+  const next = new Set<string>(normalizeEngagements(selected));
+  if (next.has(type)) next.delete(type);
+  else next.add(type);
+  return normalizeEngagements([...next]);
+}
+
+/** true if at least one row has a table for at least one selected type */
+export function hasEngagementData(
+  rows: readonly CostCenterDetail[],
+  engagements: readonly EngagementType[]
+): boolean {
+  return rows.some((row) =>
+    engagements.some((type) => {
+      const table = row.engagement_tables?.[type];
+      return !!table && typeof table === 'object';
+    })
+  );
+}
+
+
+export function aggregateTotals(
+  rows: readonly CostCenterDetail[],
+  source: string,
+  engagements: readonly EngagementType[] = []
+): Pair {
+  const types = normalizeEngagements(engagements);
   let target = 0;
   let actual = 0;
+
   for (const row of rows) {
-    const total = row.tables?.[source]?.total;
-    target += toNumber(total?.target);
-    actual += toNumber(total?.actual);
+    if (types.length === 0) {
+      const total = row.tables?.[source]?.total;
+      target += toNumber(total?.target);
+      actual += toNumber(total?.actual);
+    } else {
+      for (const type of types) {
+        const total = row.engagement_tables?.[type]?.[source]?.total;
+        target += toNumber(total?.target);
+        actual += toNumber(total?.actual);
+      }
+    }
   }
   return { target, actual };
 }
 
-/** "NAME" or "NAME (merged: A, B)" for the "Showing:" line. */
 export function describeRow(detail: CostCenterDetail): string {
   const label = cleanLabel(detail.cost_center) || 'Unnamed cost center';
   const members = Array.isArray(detail.merged_group_costcenters)
@@ -113,7 +161,6 @@ export function describeRow(detail: CostCenterDetail): string {
   return members.length ? `${label} (merged: ${members.join(', ')})` : label;
 }
 
-/** Empty array = All. Removing the last selection returns to All. */
 export function toggleCenter(selected: readonly string[], label: string): string[] {
   const n = normalizeLabel(label);
   return selected.some((s) => normalizeLabel(s) === n)
@@ -121,7 +168,6 @@ export function toggleCenter(selected: readonly string[], label: string): string
     : [...selected, label];
 }
 
-/** Selecting All clears every individual selection. */
 export function selectAll(): string[] {
   return [];
 }

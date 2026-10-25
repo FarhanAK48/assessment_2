@@ -27,12 +27,7 @@ export interface DateRange {
   to: string;
 }
 
-// export interface DashboardState {
-//   status: 'loading' | 'error' | 'empty' | 'success';
-//   rows: SummaryRow[];
-//   range: DateRange | null;
-//   message?: string;
-// }
+
 
 
 export interface DashboardState {
@@ -49,10 +44,18 @@ export interface CostCenterDetail {
   cost_code?: string;
   merge_group_id?: number | string | null;
   merged_group_costcenters?: string[] | null;
-  tables?: Record<string, { total?: { target?: number; actual?: number } } | undefined>;
+  tables?: Record<string, TotalsTable | undefined>;
+  engagement_tables?: Record<string, Record<string, TotalsTable | undefined> | undefined>;
 }
 
 export interface CostCenterOption {
   label: string;
   memberOf?: string;
+}
+
+export const ENGAGEMENT_TYPES = ['Own', 'Rented', 'Hired'] as const;
+export type EngagementType = (typeof ENGAGEMENT_TYPES)[number];
+
+export interface TotalsTable {
+  total?: { target?: number; actual?: number };
 }
