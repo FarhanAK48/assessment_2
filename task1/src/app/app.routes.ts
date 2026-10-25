@@ -1,13 +1,12 @@
 import { Routes } from '@angular/router';
 import { DEFAULT_MONTH } from './core/config/months';
 
-
-export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: `dashboard/${DEFAULT_MONTH}` },
+ export const routes: Routes = [
   {
-    path: 'dashboard/:month',
+    path: '',
+    pathMatch: 'full',
     loadComponent: () =>
       import('./pages/dashboard/dashboard.component').then((m) => m.DashboardComponent),
   },
-  { path: '**', redirectTo: `dashboard/${DEFAULT_MONTH}` },
+  { path: '**', redirectTo: '' },
 ];

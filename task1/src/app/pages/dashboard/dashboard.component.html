@@ -8,16 +8,32 @@
           · {{ r.from | date: 'dd MMM yyyy' }} – {{ r.to | date: 'dd MMM yyyy' }}
         </ng-container>
       </p>
+      <p class="updated" *ngIf="view.fetchedAt">
+        Last updated {{ view.fetchedAt | date: 'dd MMM yyyy, HH:mm:ss' }}
+      </p>
     </div>
 
-    <label class="month-select">
-      <span>Month</span>
-      <select (change)="onMonthChange($any($event.target).value)">
-        <option *ngFor="let m of months" [value]="m.value" [selected]="m.value === view.month">{{ m.label }}</option>
-        <option *ngIf="!hasMonth(view.month)" [value]="view.month" selected>{{ view.month }}</option>
-      </select>
-    </label>
+    <div class="controls">
+      <label class="month-select">
+        <span>Month</span>
+        <select (change)="onMonthChange($any($event.target).value)">
+          <option *ngFor="let m of months" [value]="m.value" [selected]="m.value === view.month">
+            {{ m.label }}
+          </option>
+        </select>
+      </label>
+
+      <button type="button" class="refresh" (click)="refresh()" [disabled]="view.busy">
+        {{ view.busy ? 'Loading…' : 'Refresh' }}
+      </button>
+    </div>
   </header>
+
+  <!-- a failed refresh keeps the last valid data on screen -->
+  <div class="banner" *ngIf="view.refreshFailed" role="alert">
+    Refresh failed. Showing the last loaded data.
+    <button type="button" (click)="refresh()">Try again</button>
+  </div>
 
   <app-cost-center
     *ngIf="view.state.costCenters?.length"
@@ -51,7 +67,7 @@
 
   <div class="state state-error" *ngIf="view.state.status === 'error'" role="alert">
     <p>{{ view.state.message }}</p>
-    <button type="button" (click)="retry()">Retry</button>
+    <button type="button" (click)="refresh()">Retry</button>
   </div>
 
   <div class="state state-empty" *ngIf="view.state.status === 'empty'">

@@ -1,22 +1,25 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ChangeDetectionStrategy, Component, OnDestroy, inject } from '@angular/core';
 import {
-  BehaviorSubject, catchError, combineLatest, distinctUntilChanged, map, Observable, of, startWith, switchMap,
+  BehaviorSubject, Observable, Subject, catchError, combineLatest, map, merge, of, startWith, switchMap,
 } from 'rxjs';
 import { CostCenterComponent } from '../../components/cost-center/cost-center.component';
 import { EngagementFilterComponent } from '../../components/engagement-filter/engagement-filter.component';
-import { AVAILABLE_MONTHS, DEFAULT_MONTH } from '../../core/config/months';
-import { DashboardState, EngagementType, PerformanceResponse } from '../../core/models/performance.model';
-import { PerformanceApiService } from '../../core/services/performance.service';
+import { AVAILABLE_MONTHS } from '../../core/config/months';
+import { DashboardState, EngagementType } from '../../core/models/performance.model';
+import { FilterStorageService } from '../../core/services/filter-storage.service';
+import { CachedResponse, PerformanceService } from '../../core/services/performance.service';
+import { normalizeLabel } from '../../core/utils/cost-center';
 import { toViewModel } from '../../core/utils/report.mapper';
 import { SummaryTableComponent } from '../../components/summary-table/summary-table.component';
 
-type ResponseState =
-  | { status: 'loading' }
-  | { status: 'error' }
-  | { status: 'success'; res: PerformanceResponse };
+/** Load status for ONE month. entry is that month's last valid data, never another month's. */
+interface LoadState {
+  month: string;
+  entry: CachedResponse | null;
+  loading: boolean;
+  failed: boolean;
+}
 
 const LOADING: DashboardState = { status: 'loading', rows: [], range: null };
 const ERROR: DashboardState = {
@@ -34,83 +37,123 @@ const ERROR: DashboardState = {
   styleUrl: './dashboard.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class DashboardComponent {
-  private readonly api = inject(PerformanceApiService);
-  private readonly route = inject(ActivatedRoute);
-  private readonly router = inject(Router);
-  private readonly retry$ = new BehaviorSubject<void>(undefined);
-  /** selected cost center labels. Empty = All. */
-  private readonly selection$ = new BehaviorSubject<string[]>([]);
-  /** selected engagement types. Empty = combined tables. */
-  private readonly engagement$ = new BehaviorSubject<EngagementType[]>([]);
+export class DashboardComponent implements OnDestroy {
+  private readonly api = inject(PerformanceService);
+  private readonly storage = inject(FilterStorageService);
+
+  private readonly saved = this.storage.load();
+  private readonly month$ = new BehaviorSubject<string>(this.saved.month);
+  private readonly centers$ = new BehaviorSubject<string[]>(this.saved.centers);
+  private readonly engagements$ = new BehaviorSubject<EngagementType[]>(this.saved.engagements);
+  private readonly refresh$ = new Subject<void>();
 
   readonly months = AVAILABLE_MONTHS;
 
-  private readonly month$: Observable<string> = this.route.paramMap.pipe(
-    map((p) => p.get('month') ?? DEFAULT_MONTH),
-    distinctUntilChanged()
+  /** A month change uses the cache. Refresh bypasses it. */
+  private readonly request$ = merge(
+    this.month$.pipe(map((month) => ({ month, refresh: false }))),
+    this.refresh$.pipe(map(() => ({ month: this.month$.value, refresh: true })))
   );
 
-  /** The ONLY stream that calls the API: once per month or Retry. Filters never reach it. */
-  private readonly response$: Observable<ResponseState> = combineLatest([this.month$, this.retry$]).pipe(
-    switchMap(([month]) =>
-      this.api.getMonth(month).pipe(
-        map((res): ResponseState => ({ status: 'success', res })),
-        catchError(() => of<ResponseState>({ status: 'error' })),
-        startWith<ResponseState>({ status: 'loading' })
-      )
-    )
+  /**
+   * switchMap unsubscribes the previous request (and its timer) whenever a new one starts.
+   * A slow September response can therefore never replace October's data, loading or error.
+   */
+  private readonly load$: Observable<LoadState> = this.request$.pipe(
+    switchMap(({ month, refresh }) => this.load(month, refresh))
   );
 
-  readonly view$ = combineLatest([this.month$, this.response$, this.selection$, this.engagement$]).pipe(
-    map(([month, response, selected, engagements]) => ({
-      month,
-      selected,
-      engagements,
-      state: this.toState(response, selected, engagements),
-    }))
+  /** The template's single async pipe is the only subscription. */
+  readonly view$ = combineLatest([this.load$, this.centers$, this.engagements$]).pipe(
+    map(([load, centers, engagements]) => this.buildView(load, centers, engagements))
   );
 
-  constructor() {
-    this.month$.pipe(takeUntilDestroyed()).subscribe(() => this.selection$.next([]));
+  private load(month: string, refresh: boolean): Observable<LoadState> {
+    const cached = this.api.peek(month);
+
+    if (cached && !refresh) {
+      return of({ month, entry: cached, loading: false, failed: false });
+    }
+
+    return this.api.load(month, { refresh: true }).pipe(
+      map((entry): LoadState => ({ month, entry, loading: false, failed: false })),
+      // a failure keeps the last valid cached entry for THIS month
+      catchError(() => of<LoadState>({ month, entry: cached, loading: false, failed: true })),
+      startWith<LoadState>({ month, entry: cached, loading: true, failed: false })
+    );
   }
 
-  private toState(
-    response: ResponseState,
-    selected: string[],
-    engagements: EngagementType[]
-  ): DashboardState {
-    switch (response.status) {
-      case 'loading':
-        return LOADING;
-      case 'error':
-        return ERROR;
-      default:
-        return toViewModel(response.res, selected, engagements);
+  private buildView(load: LoadState, centers: string[], engagements: EngagementType[]) {
+    let selected = centers;
+    let state: DashboardState;
+
+    if (load.entry) {
+      state = toViewModel(load.entry.res, selected, engagements);
+
+      // Drop restored selections that don't exist in this month's data
+      const known = new Set((state.costCenters ?? []).map((o) => normalizeLabel(o.label)));
+      const valid = selected.filter((label) => known.has(normalizeLabel(label)));
+      if (valid.length !== selected.length) {
+        selected = valid;
+        state = toViewModel(load.entry.res, valid, engagements);
+      }
+    } else {
+      state = load.loading ? LOADING : ERROR;
     }
+
+    return {
+      month: load.month,
+      selected,
+      engagements,
+      state,
+      fetchedAt: load.entry?.fetchedAt ?? null,
+      busy: load.loading,
+      // refresh failed but older valid data is still on screen
+      refreshFailed: load.failed && !!load.entry,
+    };
   }
 
   monthLabel(month: string): string {
     return this.months.find((m) => m.value === month)?.label ?? month;
   }
 
-  hasMonth(month: string): boolean {
-    return this.months.some((m) => m.value === month);
-  }
-
   onMonthChange(month: string): void {
-    this.router.navigate(['/dashboard', month]);
+    if (!this.months.some((m) => m.value === month)) return;
+    this.centers$.next([]); // centers differ per month: back to All
+    this.month$.next(month);
+    this.persist();
   }
 
   onSelectionChange(labels: string[]): void {
-    this.selection$.next(labels);
+    this.centers$.next(labels);
+    this.persist();
   }
 
   onEngagementChange(types: EngagementType[]): void {
-    this.engagement$.next(types);
+    this.engagements$.next(types);
+    this.persist();
   }
 
-  retry(): void {
-    this.retry$.next();
+  /** Bypasses the cache and makes a new request for the selected month. */
+  refresh(): void {
+    this.refresh$.next();
+  }
+  hasMonth(month: string): boolean {
+  return this.months.some((m) => m.value === month);
+}
+
+  private persist(): void {
+    this.storage.save({
+      month: this.month$.value,
+      centers: this.centers$.value,
+      engagements: this.engagements$.value,
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.month$.complete();
+    this.centers$.complete();
+    this.engagements$.complete();
+    this.refresh$.complete();
   }
 }
